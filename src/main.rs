@@ -70,10 +70,20 @@ fn main() {
     let (mut swapchain, images) = {
         let caps = surface.capabilities(physical).unwrap();
 
-        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
+        for (ix, f) in caps.supported_composite_alpha.iter().enumerate() {
+            println!("alpha {} - {:?}", ix, f);
+        }
+        // let alpha = caps.supported_composite_alpha.iter().next().unwrap();
+        let alpha = caps.supported_composite_alpha.iter().nth(1).unwrap();
+
+        println!("alpha: {:?}", alpha);
 
         // Choosing the internal format that the images will have.
+        for (ix, f) in caps.supported_formats.iter().enumerate() {
+            println!("format {} - {:?}", ix, f);
+        }
         let format = caps.supported_formats[0].0;
+        println!("format: {:?}", format);
 
         // let dimensions: [u32; 2] = surface.window().inner_size().into();
         let [w, h]: [u32; 2] = surface.window().inner_size().into();
@@ -160,6 +170,15 @@ fn main() {
         }
     }
 
+    let _point_fs = include_str!("../glsl/point.frag");
+
+    mod point_fs {
+        vulkano_shaders::shader! {
+            ty: "fragment",
+            path: "glsl/point.frag",
+        }
+    }
+
     let _gs = include_str!("../glsl/geometry.geom");
 
     mod gs {
@@ -170,7 +189,10 @@ fn main() {
     }
 
     let vs = vs::Shader::load(device.clone()).unwrap();
+
     let fs = fs::Shader::load(device.clone()).unwrap();
+    let point_fs = point_fs::Shader::load(device.clone()).unwrap();
+
     let gs = gs::Shader::load(device.clone()).unwrap();
 
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
@@ -225,15 +247,17 @@ fn main() {
             .vertex_shader(vs.main_entry_point(), ())
             // The content of the vertex buffer describes a list of triangles.
             .point_list()
-            .geometry_shader(gs.main_entry_point(), ())
+            // .geometry_shader(gs.main_entry_point(), ())
             // .triangle_list()
             // Use a resizable viewport set to draw over the entire window
             .viewports_dynamic_scissors_irrelevant(1)
             // See `vertex_shader`.
-            .fragment_shader(fs.main_entry_point(), ())
+            // .fragment_shader(fs.main_entry_point(), ())
+            .fragment_shader(point_fs.main_entry_point(), ())
             // We have to indicate which subpass of which render pass this pipeline is going to be used
             // in. The pipeline will only be usable from this particular subpass.
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .blend_alpha_blending()
             // Now that our builder is filled, we call `build()` to obtain an actual pipeline.
             .build(device.clone())
             .unwrap(),
@@ -304,9 +328,9 @@ fn main() {
                 // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
                 if recreate_swapchain {
                     // Get the new dimensions of the window.
-                    let [w, h]: [u32; 2] = surface.window().inner_size().into();
-                    let dimensions: [u32; 2] = [w / 4, h / 4];
-                    // let dimensions: [u32; 2] = surface.window().inner_size().into();
+                    // let [w, h]: [u32; 2] = surface.window().inner_size().into();
+                    // let dimensions: [u32; 2] = [w / 4, h / 4];
+                    let dimensions: [u32; 2] = surface.window().inner_size().into();
 
                     let (new_swapchain, new_images) =
                         match swapchain.recreate_with_dimensions(dimensions) {
@@ -353,7 +377,7 @@ fn main() {
                 }
 
                 // Specify the color to clear the framebuffer with i.e. blue
-                let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
+                let clear_values = vec![[0.0, 0.0, 0.1, 1.0].into()];
 
                 // In order to draw, we have to build a *command buffer*. The command buffer object holds
                 // the list of commands that are going to be executed.
@@ -446,7 +470,6 @@ fn window_size_dependent_setup(
     dynamic_state: &mut DynamicState,
 ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
-    // let dimensions: [u32; 2] = [dimensions[0] * 4, dimensions[1] * 4];
 
     let viewport = Viewport {
         origin: [0.0, 0.0],
