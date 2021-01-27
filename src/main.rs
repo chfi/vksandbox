@@ -75,7 +75,16 @@ fn main() {
         // Choosing the internal format that the images will have.
         let format = caps.supported_formats[0].0;
 
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
+        // let dimensions: [u32; 2] = surface.window().inner_size().into();
+        let [w, h]: [u32; 2] = surface.window().inner_size().into();
+
+        let dimensions: [u32; 2] = [w / 4, h / 4];
+        // let dimensions: [u32; 2] = [w / 2, h / 2];
+        // let dimensions: [u32; 2] = [w * 2, h * 2];
+        // let dimensions: [u32; 2] = [w * 4, h * 4];
+
+        println!("w: {}", dimensions[0]);
+        println!("h: {}", dimensions[1]);
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(
@@ -215,9 +224,9 @@ fn main() {
             // the entry point.
             .vertex_shader(vs.main_entry_point(), ())
             // The content of the vertex buffer describes a list of triangles.
-            // .triangle_list()
             .point_list()
             .geometry_shader(gs.main_entry_point(), ())
+            // .triangle_list()
             // Use a resizable viewport set to draw over the entire window
             .viewports_dynamic_scissors_irrelevant(1)
             // See `vertex_shader`.
@@ -295,7 +304,10 @@ fn main() {
                 // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
                 if recreate_swapchain {
                     // Get the new dimensions of the window.
-                    let dimensions: [u32; 2] = surface.window().inner_size().into();
+                    let [w, h]: [u32; 2] = surface.window().inner_size().into();
+                    let dimensions: [u32; 2] = [w / 4, h / 4];
+                    // let dimensions: [u32; 2] = surface.window().inner_size().into();
+
                     let (new_swapchain, new_images) =
                         match swapchain.recreate_with_dimensions(dimensions) {
                             Ok(r) => r,
@@ -434,6 +446,7 @@ fn window_size_dependent_setup(
     dynamic_state: &mut DynamicState,
 ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
+    // let dimensions: [u32; 2] = [dimensions[0] * 4, dimensions[1] * 4];
 
     let viewport = Viewport {
         origin: [0.0, 0.0],
