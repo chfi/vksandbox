@@ -20,6 +20,32 @@ use winit::window::{Window, WindowBuilder};
 
 use std::sync::Arc;
 
+#[derive(Default, Debug, Clone)]
+struct Vertex {
+    position: [f32; 2],
+}
+vulkano::impl_vertex!(Vertex, position);
+
+fn circular_motion(origin: [f32; 2], radius: f32, f_mult: f32, t: f32) -> [f32; 2] {
+    let [o_x, o_y] = origin;
+    let t_ = t * f_mult;
+    let x = (radius * t_.sin()) + o_x;
+    let y = (radius * t_.cos()) + o_y;
+    [x, y]
+}
+
+fn vertices(t: f32) -> [Vertex; 3] {
+    let v_0 = circular_motion([-0.5, -0.25], 0.5, 1.0, t);
+    let v_1 = circular_motion([0.0, 0.5], 0.3, 2.0, t);
+    let v_2 = circular_motion([0.25, 0.1], 0.2, 3.0, t);
+
+    [
+        Vertex { position: v_0 },
+        Vertex { position: v_1 },
+        Vertex { position: v_2 },
+    ]
+}
+
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
 
@@ -116,43 +142,16 @@ fn main() {
         .unwrap()
     };
 
-    // We now create a buffer that will store the shape of our triangle.
-    let vertex_buffer = {
-        #[derive(Default, Debug, Clone)]
-        struct Vertex {
-            position: [f32; 2],
-        }
-        vulkano::impl_vertex!(Vertex, position);
-
+    let vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>> = {
         CpuAccessibleBuffer::from_iter(
             device.clone(),
             BufferUsage::all(),
             false,
-            [
-                Vertex {
-                    position: [-0.5, -0.25],
-                },
-                Vertex {
-                    position: [0.0, 0.5],
-                },
-                Vertex {
-                    position: [0.25, -0.1],
-                },
-            ]
-            .iter()
-            .cloned(),
+            vertices(0.0).iter().cloned(),
         )
         .unwrap()
     };
 
-    // The next step is to create the shaders.
-    //
-    // The raw shader creation API provided by the vulkano library is unsafe, for various reasons.
-    //
-    // An overview of what the `vulkano_shaders::shader!` macro generates can be found in the
-    // `vulkano-shaders` crate docs. You can view them at https://docs.rs/vulkano-shaders/
-    //
-    // TODO: explain this in details
     let _vs = include_str!("../glsl/vertex.vert");
 
     mod vs {
@@ -303,7 +302,21 @@ fn main() {
     // that, we store the submission of the previous frame here.
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
+    use std::time::{Duration, Instant, SystemTime};
+
+    let mut last_time = Instant::now();
+    let mut t = 0.0;
+    let mut since_last_render = 0.0;
+
     event_loop.run(move |event, _, control_flow| {
+        let now = Instant::now();
+        let delta = now.duration_since(last_time);
+
+        t += delta.as_secs_f32();
+        since_last_render += delta.as_secs_f32();
+
+        last_time = now;
+
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -446,6 +459,23 @@ fn main() {
 
                 match future {
                     Ok(future) => {
+                        if let Ok(_) = future.wait(None) {
+                            if let Ok(write_lock) = vertex_buffer.write() {
+                                println!("delta: {}", since_last_render);
+
+                                since_last_render = 0.0;
+
+                                let mut buf: vulkano::buffer::cpu_access::WriteLock<[Vertex]> =
+                                    write_lock;
+
+                                let mut new_vertices = vertices(t);
+
+                                for i in 0..=2 {
+                                    std::mem::swap(&mut buf[i], &mut new_vertices[i]);
+                                }
+                            }
+                        }
+
                         previous_frame_end = Some(future.boxed());
                     }
                     Err(FlushError::OutOfDate) => {
