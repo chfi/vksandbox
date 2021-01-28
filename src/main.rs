@@ -1,5 +1,7 @@
 // adapted from https://github.com/vulkano-rs/vulkano/blob/master/examples/src/bin/triangle.rs
 
+#![allow(unused_imports)]
+
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions};
@@ -22,11 +24,9 @@ use winit::window::{Window, WindowBuilder};
 
 use std::sync::Arc;
 
-#[derive(Default, Debug, Clone)]
-struct Vertex {
-    position: [f32; 2],
-}
-vulkano::impl_vertex!(Vertex, position);
+use std::time::Instant;
+
+use vksandbox::display::*;
 
 fn circular_motion(origin: [f32; 2], radius: f32, f_mult: f32, t: f32) -> [f32; 2] {
     let [o_x, o_y] = origin;
@@ -116,48 +116,6 @@ fn main() {
 
     let buffer_pool: CpuBufferPool<Vertex> = CpuBufferPool::vertex_buffer(device.clone());
 
-    let _vs = include_str!("../glsl/vertex.vert");
-
-    mod vs {
-        vulkano_shaders::shader! {
-            ty: "vertex",
-            path: "glsl/vertex.vert",
-        }
-    }
-    let _fs = include_str!("../glsl/fragment.frag");
-
-    mod fs {
-        vulkano_shaders::shader! {
-            ty: "fragment",
-            path: "glsl/fragment.frag",
-        }
-    }
-
-    let _point_fs = include_str!("../glsl/point.frag");
-
-    mod point_fs {
-        vulkano_shaders::shader! {
-            ty: "fragment",
-            path: "glsl/point.frag",
-        }
-    }
-
-    let _gs = include_str!("../glsl/geometry.geom");
-
-    mod gs {
-        vulkano_shaders::shader! {
-            ty: "geometry",
-            path: "glsl/geometry.geom",
-        }
-    }
-
-    let vs = vs::Shader::load(device.clone()).unwrap();
-
-    let fs = fs::Shader::load(device.clone()).unwrap();
-    let point_fs = point_fs::Shader::load(device.clone()).unwrap();
-
-    let gs = gs::Shader::load(device.clone()).unwrap();
-
     let render_pass = Arc::new(
         vulkano::single_pass_renderpass!(
             device.clone(),
@@ -177,21 +135,7 @@ fn main() {
         .unwrap(),
     );
 
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer()
-            .vertex_shader(vs.main_entry_point(), ())
-            .point_list()
-            // .geometry_shader(gs.main_entry_point(), ())
-            // .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            // .fragment_shader(fs.main_entry_point(), ())
-            .fragment_shader(point_fs.main_entry_point(), ())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .blend_alpha_blending()
-            .build(device.clone())
-            .unwrap(),
-    );
+    let mut circles = CirclesGfx::new(device.clone(), render_pass.clone());
 
     let mut dynamic_state = DynamicState {
         line_width: None,
@@ -209,18 +153,14 @@ fn main() {
 
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    use std::time::Instant;
-
     let mut last_time = Instant::now();
     let mut t = 0.0;
-    let mut since_last_render = 0.0;
 
     event_loop.run(move |event, _, control_flow| {
         let now = Instant::now();
         let delta = now.duration_since(last_time);
 
         t += delta.as_secs_f32();
-        since_last_render += delta.as_secs_f32();
 
         last_time = now;
 
@@ -274,11 +214,10 @@ fn main() {
 
                 let clear_values = vec![[0.0, 0.0, 0.1, 1.0].into()];
 
-                let data = vertices(t);
+                let new_vertices = vertices(t);
+                circles.set_vertices(&new_vertices);
 
-                let buffer = buffer_pool.chunk(data.to_vec()).unwrap();
-
-                // let buffer = buffer_pool.chunk(
+                let buffer = buffer_pool.chunk(circles.vertices().to_vec()).unwrap();
 
                 let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
                     device.clone(),
@@ -293,7 +232,7 @@ fn main() {
                         clear_values,
                     )
                     .unwrap()
-                    .draw(pipeline.clone(), &dynamic_state, buffer, (), ())
+                    .draw(circles.pipeline().clone(), &dynamic_state, buffer, (), ())
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
