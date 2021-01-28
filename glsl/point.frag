@@ -4,9 +4,7 @@ layout(location = 0) out vec4 f_color;
 
 float circ_dist(vec2 pos) {
   float dist = length(pos);
-
   float radius = dist - 0.3;
-
   return radius;
 }
 
