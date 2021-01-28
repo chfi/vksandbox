@@ -1,6 +1,6 @@
 // adapted from https://github.com/vulkano-rs/vulkano/blob/master/examples/src/bin/triangle.rs
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
@@ -114,15 +114,7 @@ fn main() {
         .unwrap()
     };
 
-    let vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>> = {
-        CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            vertices(0.0).iter().cloned(),
-        )
-        .unwrap()
-    };
+    let buffer_pool: CpuBufferPool<Vertex> = CpuBufferPool::vertex_buffer(device.clone());
 
     let _vs = include_str!("../glsl/vertex.vert");
 
@@ -217,7 +209,7 @@ fn main() {
 
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-    use std::time::{Duration, Instant, SystemTime};
+    use std::time::Instant;
 
     let mut last_time = Instant::now();
     let mut t = 0.0;
@@ -282,6 +274,12 @@ fn main() {
 
                 let clear_values = vec![[0.0, 0.0, 0.1, 1.0].into()];
 
+                let data = vertices(t);
+
+                let buffer = buffer_pool.chunk(data.to_vec()).unwrap();
+
+                // let buffer = buffer_pool.chunk(
+
                 let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
                     device.clone(),
                     queue.family(),
@@ -295,13 +293,7 @@ fn main() {
                         clear_values,
                     )
                     .unwrap()
-                    .draw(
-                        pipeline.clone(),
-                        &dynamic_state,
-                        vertex_buffer.clone(),
-                        (),
-                        (),
-                    )
+                    .draw(pipeline.clone(), &dynamic_state, buffer, (), ())
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
@@ -319,23 +311,6 @@ fn main() {
 
                 match future {
                     Ok(future) => {
-                        if let Ok(_) = future.wait(None) {
-                            if let Ok(write_lock) = vertex_buffer.write() {
-                                println!("delta: {}", since_last_render);
-
-                                since_last_render = 0.0;
-
-                                let mut buf: vulkano::buffer::cpu_access::WriteLock<[Vertex]> =
-                                    write_lock;
-
-                                let mut new_vertices = vertices(t);
-
-                                for i in 0..=2 {
-                                    std::mem::swap(&mut buf[i], &mut new_vertices[i]);
-                                }
-                            }
-                        }
-
                         previous_frame_end = Some(future.boxed());
                     }
                     Err(FlushError::OutOfDate) => {
